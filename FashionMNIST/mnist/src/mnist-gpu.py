@@ -41,9 +41,8 @@ class Net(nn.Module):
         # 第三层批量归一化（卷积层后）
         self.bn3 = nn.BatchNorm2d(256)
 
-
         # Dropout层：在卷积层后应用2D dropout
-        #self.dropout2d = nn.Dropout2d(p=dropout_rate)
+        self.dropout2d = nn.Dropout2d(p=dropout_rate)
 
         # 第一层全连接层：输入=256*1*1=256（经过多次池化后）
         # 计算过程：28x28 -> 24x24(conv1) -> 12x12(pool) -> 10x10(conv2) -> 5x5(pool)
@@ -287,7 +286,7 @@ def main():
 
     parser.add_argument('--dir', default='logs', metavar='L',
                         help='directory where summary logs are stored')
-    parser.add_argument('--dropout', type=float, default=0.1, metavar='D',
+    parser.add_argument('--dropout', type=float, default=0.06, metavar='D',
                         help='dropout rate (default: 0.1)')
     if dist.is_available():
         parser.add_argument('--backend', type=str, help='Distributed backend',
