@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fashion MNIST CNN 神经网络结构可视化</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 40px;
+        }
+
+        .section {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        /* 图像处理部分 */
+        .image-processing {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .processing-step {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-left: 4px solid #667eea;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .processing-step:hover {
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+            transform: translateX(5px);
+        }
+
+        .processing-step.active {
+            background: #e7f0ff;
+            border-left-color: #764ba2;
+        }
+
+        .processing-step h3 {
+            color: #667eea;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .processing-step p {
+            color: #666;
+            font-size: 0.95em;
+            line-height: 1.5;
+        }
+
+        .processing-step code {
+            display: block;
+            background: #f0f0f0;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            overflow-x: auto;
+        }
+
+        /* 神经网络结构部分 */
+        .network-structure {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+        }
+
+        .network-canvas {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            min-height: 400px;
+            overflow-x: auto;
+        }
+
+        .layer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+
+        .layer-name {
+            font-size: 0.85em;
+            color: #333;
+            font-weight: bold;
+            text-align: center;
+            width: 100%;
+        }
+
+        .layer-visual {
+            display: flex;
+            gap: 3px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .channel {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+
+        .neuron {
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+        }
+
+        .neuron:hover {
+            transform: scale(1.2);
+            border-color: #667eea;
+            box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+        }
+
+        .layer-info {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 0.8em;
+            width: 100%;
+            margin-top: 10px;
+            border: 1px solid #ddd;
+        }
+
+        .layer-info.active {
+            background: #e7f0ff;
+            border-color: #667eea;
+        }
+
+        /* 详细信息面板 */
+        .details-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #667eea;
+            margin-top: 20px;
+        }
+
+        .details-panel h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .detail-item {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .detail-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .detail-label {
+            color: #667eea;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .detail-value {
+            color: #333;
+            font-family: 'Courier New', monospace;
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        /* 下方统计信息 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 40px;
+            background: #f8f9fa;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-card h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 0.95em;
+        }
+
+        .stat-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .stat-unit {
+            color: #999;
+            font-size: 0.85em;
+            margin-top: 5px;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1024px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+
+        /* 动画 */
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.6;
+            }
+        }
+
+        .neuron.active {
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        /* 数据流动箭头 */
+        .data-flow {
+            text-align: center;
+            color: #667eea;
+            font-weight: bold;
+            margin: 10px 0;
+            font-size: 1.2em;
+        }
+
+        .controls {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            background: #667eea;
+            color: white;
+        }
+
+        .btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn.active {
+            background: #764ba2;
+        }
+
+        /* 图像展示 */
+        .image-demo {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .image-demo canvas {
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            max-width: 100%;
+            height: auto;
+        }
+
+        .image-label {
+            margin-top: 10px;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 Fashion MNIST CNN 神经网络</h1>
+            <p>交互式可视化 - 深入了解图像分类的工作原理</p>
+        </div>
+
+        <div class="controls">
+            <button class="btn active" onclick="showSection('processing')">图像处理流程</button>
+            <button class="btn" onclick="showSection('network')">网络结构</button>
+            <button class="btn" onclick="playAnimation()">▶ 数据流动演示</button>
+        </div>
+
+        <div class="content">
+            <!-- 左侧：图像处理流程 -->
+            <div class="section" id="processing-section">
+                <h2>📸 图像处理流程</h2>
+                <div class="image-demo">
+                    <h3 style="margin-bottom: 10px;">Fashion MNIST 衣服图像</h3>
+                    <canvas id="imageCanvas" width="280" height="280" style="border: 2px solid #667eea;"></canvas>
+                    <div class="image-label">28×28 像素灰度图像</div>
+                </div>
+
+                <div class="image-processing">
+                    <div class="processing-step active" onclick="selectStep(0)">
+                        <h3>1️⃣ 随机旋转</h3>
+                        <p>输入图像随机旋转 ±10度，增加数据多样性。</p>
+                        <code>transforms.RandomRotation(10)</code>
+                    </div>
+
+                    <div class="processing-step" onclick="selectStep(1)">
+                        <h3>2️⃣ 随机平移</h3>
+                        <p>图像在水平和竖直方向随机平移 ±10%。</p>
+                        <code>RandomAffine(degrees=0, translate=(0.1, 0.1))</code>
+                    </div>
+
+                    <div class="processing-step" onclick="selectStep(2)">
+                        <h3>3️⃣ 亮度调整</h3>
+                        <p>随机调整图像亮度 ±20%，模拟不同光照条件。</p>
+                        <code>ColorJitter(brightness=0.2)</code>
+                    </div>
+
+                    <div class="processing-step" onclick="selectStep(3)">
+                        <h3>4️⃣ 张量转换</h3>
+                        <p>图像转换为 PyTorch 张量，像素值范围 [0, 1]。</p>
+                        <code>transforms.ToTensor()</code>
+                    </div>
+
+                    <div class="processing-step" onclick="selectStep(4)">
+                        <h3>5️⃣ 标准化</h3>
+                        <p>使用均值(0.1307)和标准差(0.3081)进行标准化，加快收敛、提升稳定性。</p>
+                        <code>Normalize(mean=(0.1307,), std=(0.3081,))</code>
+                    </div>
+
+                    <div style="background: #e7f0ff; padding: 15px; border-radius: 5px; margin-top: 15px; border-left: 4px solid #667eea;">
+                        <h3 style="color: #667eea; margin-bottom: 10px;">✅ 规范的网络层顺序</h3>
+                        <p style="color: #333; font-size: 0.95em; line-height: 1.6;">
+                            <strong>卷积块：</strong> Conv → BatchNorm → ReLU → MaxPool → Dropout<br>
+                            <strong>全连接块：</strong> FC → BatchNorm → ReLU → Dropout（最后一层无Dropout）<br>
+                            <strong>输出层：</strong> FC → LogSoftmax（无激活、无Dropout）
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：神经网络结构 -->
+            <div class="section" id="network-section" style="display: none;">
+                <h2>🧬 CNN 网络结构</h2>
+                <div class="network-structure">
+                    <div class="network-canvas" id="networkCanvas"></div>
+                </div>
+
+                <div class="details-panel" id="detailsPanel">
+                    <h3>Layer 详情</h3>
+                    <p style="color: #999;">点击网络中的层以查看详细信息</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 统计信息 -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>📊 总参数数量</h3>
+                <div class="stat-value">156,362</div>
+                <div class="stat-unit">个可训练参数</div>
+            </div>
+            <div class="stat-card">
+                <h3>🎯 输入尺寸</h3>
+                <div class="stat-value">28×28×1</div>
+                <div class="stat-unit">灰度图像</div>
+            </div>
+            <div class="stat-card">
+                <h3>🏷️ 输出分类</h3>
+                <div class="stat-value">10</div>
+                <div class="stat-unit">衣服类别</div>
+            </div>
+            <div class="stat-card">
+                <h3>⚙️ 卷积层数</h3>
+                <div class="stat-value">3</div>
+                <div class="stat-unit">层</div>
+            </div>
+            <div class="stat-card">
+                <h3>🔌 全连接层</h3>
+                <div class="stat-value">2</div>
+                <div class="stat-unit">层</div>
+            </div>
+            <div class="stat-card">
+                <h3>📈 模型深度</h3>
+                <div class="stat-value">中等</div>
+                <div class="stat-unit">相对简洁高效</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 网络架构定义
+        const networkLayers = [
+            {
+                name: '输入层',
+                shape: [1, 28, 28],
+                description: 'Fashion MNIST 原始图像',
+                type: 'input',
+                channels: 1,
+                spatial: '28×28',
+                params: 0
+            },
+            {
+                name: 'Conv1',
+                shape: [64, 24, 24],
+                description: '卷积层：64个5×5卷积核',
+                type: 'conv2d',
+                channels: 64,
+                spatial: '24×24',
+                kernelSize: '5×5',
+                params: 1664,
+                details: 'nn.Conv2d(1, 64, kernel_size=5, stride=1)\n输出 = floor((28 - 5 + 0) / 1 + 1) = 24'
+            },
+            {
+                name: 'BatchNorm1 + ReLU',
+                shape: [64, 24, 24],
+                description: '批量归一化 + ReLU激活',
+                type: 'activation',
+                params: 128
+            },
+            {
+                name: 'MaxPool1',
+                shape: [64, 12, 12],
+                description: '2×2最大池化（池化后才应用Dropout）',
+                type: 'pool',
+                spatial: '12×12',
+                params: 0,
+                details: 'MaxPool2d(kernel_size=2, stride=2)\n24 / 2 = 12'
+            },
+            {
+                name: 'Dropout2d',
+                shape: [64, 12, 12],
+                description: '2D Dropout (p=0.5)：防止过拟合',
+                type: 'dropout',
+                spatial: '12×12',
+                params: 0
+            },
+            {
+                name: 'Conv2',
+                shape: [128, 10, 10],
+                description: '卷积层：128个3×3卷积核',
+                type: 'conv2d',
+                channels: 128,
+                spatial: '10×10',
+                kernelSize: '3×3',
+                params: 73856,
+                details: 'nn.Conv2d(64, 128, kernel_size=3, stride=1)\n输出 = floor((12 - 3 + 0) / 1 + 1) = 10'
+            },
+            {
+                name: 'BatchNorm2 + ReLU',
+                shape: [128, 10, 10],
+                description: '批量归一化 + ReLU激活',
+                type: 'activation',
+                params: 256
+            },
+            {
+                name: 'MaxPool2',
+                shape: [128, 5, 5],
+                description: '2×2最大池化（池化后才应用Dropout）',
+                type: 'pool',
+                spatial: '5×5',
+                params: 0,
+                details: 'MaxPool2d(kernel_size=2, stride=2)\n10 / 2 = 5'
+            },
+            {
+                name: 'Dropout2d',
+                shape: [128, 5, 5],
+                description: '2D Dropout (p=0.5)：防止过拟合',
+                type: 'dropout',
+                spatial: '5×5',
+                params: 0
+            },
+            {
+                name: 'Conv3',
+                shape: [256, 3, 3],
+                description: '卷积层：256个3×3卷积核',
+                type: 'conv2d',
+                channels: 256,
+                spatial: '3×3',
+                kernelSize: '3×3',
+                params: 295168,
+                details: 'nn.Conv2d(128, 256, kernel_size=3, stride=1)\n输出 = floor((5 - 3 + 0) / 1 + 1) = 3'
+            },
+            {
+                name: 'BatchNorm3 + ReLU',
+                shape: [256, 3, 3],
+                description: '批量归一化 + ReLU激活',
+                type: 'activation',
+                params: 512
+            },
+            {
+                name: 'MaxPool3',
+                shape: [256, 1, 1],
+                description: '2×2最大池化（池化后才应用Dropout）',
+                type: 'pool',
+                spatial: '1×1',
+                params: 0,
+                details: 'MaxPool2d(kernel_size=2, stride=2)\n3 / 2 ≈ 1 (需要padding)'
+            },
+            {
+                name: 'Dropout2d',
+                shape: [256, 1, 1],
+                description: '2D Dropout (p=0.5)：防止过拟合',
+                type: 'dropout',
+                spatial: '1×1',
+                params: 0
+            },
+            {
+                name: '展平层',
+                shape: [256],
+                description: '将多维张量展平为一维',
+                type: 'flatten',
+                params: 0,
+                details: 'x.view(-1, 256*1*1) = 256'
+            },
+            {
+                name: 'FC1',
+                shape: [256],
+                description: '全连接层：256 → 256',
+                type: 'dense',
+                params: 65792,
+                details: 'nn.Linear(256, 256)\n参数数量 = 256 × 256 + 256(bias) = 65,792'
+            },
+            {
+                name: 'BatchNorm + ReLU',
+                shape: [256],
+                description: '批量归一化 + ReLU激活（隐藏层）',
+                type: 'activation',
+                params: 512
+            },
+            {
+                name: 'Dropout',
+                shape: [256],
+                description: 'Dropout (p=0.5)：隐藏层防过拟合（不在输出层）',
+                type: 'dropout',
+                params: 0
+            },
+            {
+                name: 'FC2 (输出)',
+                shape: [10],
+                description: '输出层：256 → 10类（无激活、无Dropout）',
+                type: 'output',
+                params: 2570,
+                details: 'nn.Linear(256, 10)\n参数数量 = 256 × 10 + 10(bias) = 2,570\n10个衣服分类\n后接 log_softmax 用于 NLL 损失'
+            }
+        ];
+
+        // 衣服分类标签
+        const fashionLabels = [
+            'T-shirt', 'Trouser', 'Pullover', 'Dress', 'Coat',
+            'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot'
+        ];
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            drawSampleImage();
+            drawNetworkVisualization();
+        });
+
+        // 绘制示例图像
+        function drawSampleImage() {
+            const canvas = document.getElementById('imageCanvas');
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.createImageData(28, 28);
+            const data = imageData.data;
+
+            // 创建一个简单的衣服形状（T-shirt）
+            for (let i = 0; i < 28 * 28; i++) {
+                const x = i % 28;
+                const y = Math.floor(i / 28);
+                let intensity = 0;
+
+                // T-shirt 形状
+                if ((y >= 5 && y <= 10 && x >= 8 && x <= 19) ||  // 肩膀
+                    (y >= 10 && y <= 22 && x >= 10 && x <= 17)) { // 身体
+                    intensity = 200 + Math.random() * 55;
+                }
+
+                // 应用高斯模糊效果
+                if (intensity > 0) {
+                    intensity += (Math.random() - 0.5) * 30;
+                    intensity = Math.max(0, Math.min(255, intensity));
+                }
+
+                data[i * 4] = intensity;      // R
+                data[i * 4 + 1] = intensity;  // G
+                data[i * 4 + 2] = intensity;  // B
+                data[i * 4 + 3] = 255;        // A
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+
+            // 放大绘制
+            const displayCanvas = canvas;
+            const displayCtx = displayCanvas.getContext('2d');
+            displayCtx.imageSmoothingEnabled = false;
+            displayCtx.scale(10, 10);
+            displayCtx.putImageData(imageData, 0, 0);
+        }
+
+        // 绘制网络可视化
+        function drawNetworkVisualization() {
+            const container = document.getElementById('networkCanvas');
+            container.innerHTML = '';
+
+            networkLayers.forEach((layer, index) => {
+                const layerDiv = document.createElement('div');
+                layerDiv.className = 'layer';
+                layerDiv.onclick = () => selectLayer(index);
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'layer-name';
+                nameDiv.textContent = layer.name;
+                nameDiv.style.maxWidth = '80px';
+
+                const visualDiv = document.createElement('div');
+                visualDiv.className = 'layer-visual';
+
+                // 根据层类型绘制不同的可视化
+                if (layer.type === 'input' || layer.type === 'activation' || layer.type === 'dropout') {
+                    // 简单层
+                    const height = 60;
+                    const neuronDiv = document.createElement('div');
+                    neuronDiv.style.width = '40px';
+                    neuronDiv.style.height = height + 'px';
+                    neuronDiv.style.background = 'linear-gradient(180deg, #667eea 0%, #764ba2 100%)';
+                    neuronDiv.style.borderRadius = '5px';
+                    neuronDiv.style.cursor = 'pointer';
+                    neuronDiv.style.transition = 'all 0.3s ease';
+                    neuronDiv.onmouseover = () => neuronDiv.style.transform = 'scale(1.05)';
+                    neuronDiv.onmouseout = () => neuronDiv.style.transform = 'scale(1)';
+                    visualDiv.appendChild(neuronDiv);
+                } else if (layer.type === 'flatten') {
+                    // 展平层
+                    const size = Math.min(10, layer.shape[0]);
+                    for (let i = 0; i < size; i++) {
+                        const neuron = document.createElement('div');
+                        neuron.className = 'neuron';
+                        neuron.style.width = '8px';
+                        neuron.style.height = '8px';
+                        neuron.style.background = '#667eea';
+                        visualDiv.appendChild(neuron);
+                    }
+                } else if (layer.type === 'dense' || layer.type === 'output') {
+                    // 全连接层
+                    const size = layer.shape[0];
+                    const displaySize = Math.min(10, size);
+                    for (let i = 0; i < displaySize; i++) {
+                        const neuron = document.createElement('div');
+                        neuron.className = 'neuron';
+                        neuron.style.width = '10px';
+                        neuron.style.height = '10px';
+                        neuron.style.background = layer.type === 'output' ? '#ff6b6b' : '#667eea';
+                        neuron.style.margin = '2px';
+                        visualDiv.appendChild(neuron);
+                    }
+                } else if (layer.type === 'pool') {
+                    // 池化层
+                    const neuron = document.createElement('div');
+                    neuron.style.width = '40px';
+                    neuron.style.height = '40px';
+                    neuron.style.background = 'linear-gradient(180deg, #51cf66 0%, #2d9c4f 100%)';
+                    neuron.style.borderRadius = '5px';
+                    neuron.style.display = 'flex';
+                    neuron.style.alignItems = 'center';
+                    neuron.style.justifyContent = 'center';
+                    neuron.style.color = 'white';
+                    neuron.style.fontSize = '12px';
+                    neuron.textContent = 'Pool';
+                    visualDiv.appendChild(neuron);
+                } else {
+                    // 卷积层
+                    const numChannels = Math.min(layer.channels, 8);
+                    for (let c = 0; c < numChannels; c++) {
+                        const channelDiv = document.createElement('div');
+                        channelDiv.className = 'channel';
+                        const gridSize = Math.min(4, layer.spatial.split('×')[0] / 4);
+                        for (let i = 0; i < 2; i++) {
+                            const neuron = document.createElement('div');
+                            neuron.className = 'neuron';
+                            neuron.style.width = '12px';
+                            neuron.style.height = '12px';
+                            neuron.style.background = `hsl(${c * 45}, 70%, 60%)`;
+                            channelDiv.appendChild(neuron);
+                        }
+                        visualDiv.appendChild(channelDiv);
+                    }
+                }
+
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'layer-info';
+                infoDiv.innerHTML = `<strong>${layer.spatial || layer.shape.join('×')}</strong>`;
+
+                layerDiv.appendChild(nameDiv);
+                layerDiv.appendChild(visualDiv);
+                layerDiv.appendChild(infoDiv);
+
+                container.appendChild(layerDiv);
+
+                // 添加箭头
+                if (index < networkLayers.length - 1) {
+                    const arrow = document.createElement('div');
+                    arrow.style.display = 'flex';
+                    arrow.style.alignItems = 'center';
+                    arrow.style.color = '#667eea';
+                    arrow.style.fontSize = '20px';
+                    arrow.style.fontWeight = 'bold';
+                    arrow.textContent = '→';
+                    arrow.style.minWidth = '20px';
+                    arrow.style.textAlign = 'center';
+                    container.appendChild(arrow);
+                }
+            });
+        }
+
+        // 选择处理步骤
+        function selectStep(stepIndex) {
+            document.querySelectorAll('.processing-step').forEach((step, index) => {
+                step.classList.toggle('active', index === stepIndex);
+            });
+        }
+
+        // 选择网络层
+        function selectLayer(layerIndex) {
+            const layers = document.querySelectorAll('.layer-info');
+            layers.forEach((layer, index) => {
+                layer.classList.toggle('active', index === layerIndex);
+            });
+
+            // 更新详情面板
+            const layer = networkLayers[layerIndex];
+            const panel = document.getElementById('detailsPanel');
+            let html = `<h3>${layer.name}</h3>`;
+            html += `<div class="detail-item">
+                <div class="detail-label">描述</div>
+                <div class="detail-value">${layer.description}</div>
+            </div>`;
+            html += `<div class="detail-item">
+                <div class="detail-label">输出形状</div>
+                <div class="detail-value">${layer.shape.join(' × ')}</div>
+            </div>`;
+            if (layer.kernelSize) {
+                html += `<div class="detail-item">
+                    <div class="detail-label">卷积核大小</div>
+                    <div class="detail-value">${layer.kernelSize}</div>
+                </div>`;
+            }
+            if (layer.channels) {
+                html += `<div class="detail-item">
+                    <div class="detail-label">通道数</div>
+                    <div class="detail-value">${layer.channels}</div>
+                </div>`;
+            }
+            html += `<div class="detail-item">
+                <div class="detail-label">参数数量</div>
+                <div class="detail-value">${layer.params.toLocaleString()}</div>
+            </div>`;
+            if (layer.details) {
+                html += `<div class="detail-item">
+                    <div class="detail-label">计算细节</div>
+                    <div class="detail-value"><pre>${layer.details}</pre></div>
+                </div>`;
+            }
+
+            panel.innerHTML = html;
+        }
+
+        // 显示/隐藏部分
+        function showSection(sectionName) {
+            document.getElementById('processing-section').style.display =
+                sectionName === 'processing' ? 'flex' : 'none';
+            document.getElementById('network-section').style.display =
+                sectionName === 'network' ? 'flex' : 'none';
+
+            // 更新按钮状态
+            document.querySelectorAll('.controls .btn').forEach((btn, index) => {
+                btn.classList.toggle('active',
+                    (index === 0 && sectionName === 'processing') ||
+                    (index === 1 && sectionName === 'network'));
+            });
+        }
+
+        // 数据流动演示
+        function playAnimation() {
+            const layers = document.querySelectorAll('.layer-info');
+            let current = 0;
+
+            const interval = setInterval(() => {
+                layers.forEach(layer => layer.classList.remove('active'));
+                if (current < layers.length) {
+                    layers[current].classList.add('active');
+                    selectLayer(current);
+                    current++;
+                } else {
+                    clearInterval(interval);
+                }
+            }, 500);
+        }
+
+        // 在页面加载时添加一些初始交互提示
+        window.addEventListener('load', function() {
+            // 自动选择第一个处理步骤
+            selectStep(0);
+        });
+    </script>
+</body>
+</html>
