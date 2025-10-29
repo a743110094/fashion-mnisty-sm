@@ -191,6 +191,7 @@ def test(args, model, device, test_loader, writer, epoch):
 class EarlyStopping:
     """
     监听验证精度，如果连续patience个epoch没有改进，则停止训练
+    同时保存最佳模型的状态字典
     """
     def __init__(self, patience=10, verbose=False, delta=0.0001):
         """
@@ -204,22 +205,28 @@ class EarlyStopping:
         self.delta = delta
         self.counter = 0  # 记录没有改进的epoch次数
         self.best_val_acc = None  # 记录最佳验证精度
+        self.best_model_state = None  # 保存最佳模型的状态字典
+        self.best_epoch = None  # 记录最佳模型出现的epoch
         self.early_stop = False  # 是否停止训练的标志
 
-    def __call__(self, val_acc):
+    def __call__(self, val_acc, model):
         """
-        检查验证精度是否改进
+        检查验证精度是否改进，并保存最佳模型
         Args:
             val_acc (float): 当前epoch的验证精度
+            model: 当前的模型对象
         Returns:
             bool: 是否应该停止训练
         """
         if self.best_val_acc is None:
-            # 第一个epoch，记录最佳精度
+            # 第一个epoch，记录最佳精度和模型
             self.best_val_acc = val_acc
+            self.best_model_state = {k: v.cpu() for k, v in model.state_dict().items()}
+            self.best_epoch = 1
         elif val_acc > self.best_val_acc + self.delta:
-            # 精度有改进
+            # 精度有改进，保存新的最佳模型
             self.best_val_acc = val_acc
+            self.best_model_state = {k: v.cpu() for k, v in model.state_dict().items()}
             self.counter = 0  # 重置计数器
             if self.verbose:
                 print(f'✅ Validation accuracy improved to {val_acc:.4f}')
@@ -304,13 +311,13 @@ def is_distributed():
 def main():
     # ========== 1. 解析命令行参数 ==========
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=100, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=200, metavar='N',
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size', type=int, default=500, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=200, metavar='N',
+    parser.add_argument('--epochs', type=int, default=1000, metavar='N',
                         help='number of epochs to train (default: 50)')
-    parser.add_argument('--lr', type=float, default=0.04, metavar='LR',
+    parser.add_argument('--lr', type=float, default=0.1, metavar='LR',
                         help='learning rate (default: 0.01)')
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                         help='SGD momentum (default: 0.9) - 注：使用Adam优化器时此参数不起作用')
@@ -337,7 +344,7 @@ def main():
 
     parser.add_argument('--dir', default='logs', metavar='L',
                         help='directory where summary logs are stored')
-    parser.add_argument('--dropout', type=float, default=0.02, metavar='D',
+    parser.add_argument('--dropout', type=float, default=0.015, metavar='D',
                         help='dropout rate (default: 0.1)')
     if dist.is_available():
         parser.add_argument('--backend', type=str, help='Distributed backend',
@@ -392,7 +399,7 @@ def main():
     # MPS: 不使用pin_memory（Mac GPU不支持），使用多进程加速
     # CPU: 基础多进程配置
     if use_cuda:
-        kwargs = {'num_workers': 32, 'pin_memory': True, 'persistent_workers': True}
+        kwargs = {'num_workers': 128, 'pin_memory': True, 'persistent_workers': True}
     elif use_mps:
         # Mac GPU 不支持 pin_memory，但可以用多进程加速数据加载
         kwargs = {'num_workers': 6, 'pin_memory': False, 'persistent_workers': True}
@@ -455,7 +462,7 @@ def main():
         print('No learning rate scheduler, using fixed learning rate')
 
     # ========== 11. 初始化早停机制 ==========
-    early_stopping = EarlyStopping(patience=10, verbose=True, delta=0.0001)
+    early_stopping = EarlyStopping(patience=30, verbose=True, delta=0.0001)
 
     # ========== 12. 训练循环（含早停） ==========
     print("begin training: ", datetime.now().strftime('%y-%m-%d %H:%M:%S'))
@@ -487,8 +494,8 @@ def main():
             else:
                 scheduler.step()
 
-        # 检查早停条件
-        if early_stopping(val_acc):
+        # 检查早停条件（传入model用于保存最佳模型状态）
+        if early_stopping(val_acc, model):
             print(f'\n{"="*60}')
             print(f'🛑 早停触发！在epoch {epoch}停止训练')
             print(f'最佳验证精度: {early_stopping.best_val_acc:.4f}')
@@ -498,11 +505,20 @@ def main():
 
     print("end training: ", datetime.now().strftime('%y-%m-%d %H:%M:%S'))
 
-    # ========== 12. 保存模型 ==========
+    # ========== 13. 保存模型 ==========
     if (args.save_model):
         if not os.path.exists(args.save_model_dir):
             os.makedirs(args.save_model_dir)
-        torch.save(model.state_dict(), os.path.join(args.save_model_dir, "mnist_cnn.pt"))
+
+        # 如果使用了早停机制，保存最佳模型；否则保存最后的模型
+        if early_stopping.best_model_state is not None:
+            # 保存最佳模型（早停触发或正常训练完成）
+            print(f'💾 保存最佳模型（验证精度: {early_stopping.best_val_acc:.4f}）')
+            torch.save(early_stopping.best_model_state, os.path.join(args.save_model_dir, "mnist_cnn.pt"))
+        else:
+            # 降级方案：保存当前模型状态
+            print(f'💾 保存当前模型')
+            torch.save(model.state_dict(), os.path.join(args.save_model_dir, "mnist_cnn.pt"))
 
 if __name__ == '__main__':
     main()
