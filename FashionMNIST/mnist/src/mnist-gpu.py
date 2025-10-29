@@ -288,7 +288,7 @@ def create_scheduler(optimizer, args):
         scheduler = lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=args.epochs)
     elif args.scheduler == 'plateau':
         # ReduceLROnPlateau: 当验证集的准确率没有提升时，将学习率衰减
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=4, factor=0.6)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.8)
     else:
         return None
 
@@ -315,9 +315,9 @@ def main():
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size', type=int, default=500, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=1000, metavar='N',
+    parser.add_argument('--epochs', type=int, default=2000, metavar='N',
                         help='number of epochs to train (default: 50)')
-    parser.add_argument('--lr', type=float, default=0.1, metavar='LR',
+    parser.add_argument('--lr', type=float, default=0.04, metavar='LR',
                         help='learning rate (default: 0.01)')
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                         help='SGD momentum (default: 0.9) - 注：使用Adam优化器时此参数不起作用')
@@ -344,7 +344,7 @@ def main():
 
     parser.add_argument('--dir', default='logs', metavar='L',
                         help='directory where summary logs are stored')
-    parser.add_argument('--dropout', type=float, default=0.015, metavar='D',
+    parser.add_argument('--dropout', type=float, default=0.01, metavar='D',
                         help='dropout rate (default: 0.1)')
     if dist.is_available():
         parser.add_argument('--backend', type=str, help='Distributed backend',
@@ -399,7 +399,7 @@ def main():
     # MPS: 不使用pin_memory（Mac GPU不支持），使用多进程加速
     # CPU: 基础多进程配置
     if use_cuda:
-        kwargs = {'num_workers': 128, 'pin_memory': True, 'persistent_workers': True}
+        kwargs = {'num_workers': 64, 'pin_memory': True, 'persistent_workers': True}
     elif use_mps:
         # Mac GPU 不支持 pin_memory，但可以用多进程加速数据加载
         kwargs = {'num_workers': 6, 'pin_memory': False, 'persistent_workers': True}
@@ -462,7 +462,7 @@ def main():
         print('No learning rate scheduler, using fixed learning rate')
 
     # ========== 11. 初始化早停机制 ==========
-    early_stopping = EarlyStopping(patience=30, verbose=True, delta=0.0001)
+    early_stopping = EarlyStopping(patience=40, verbose=True, delta=0.0001)
 
     # ========== 12. 训练循环（含早停） ==========
     print("begin training: ", datetime.now().strftime('%y-%m-%d %H:%M:%S'))
