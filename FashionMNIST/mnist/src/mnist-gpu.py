@@ -183,8 +183,59 @@ def test(args, model, device, test_loader, writer, epoch):
     writer.add_scalar('accuracy', accuracy, epoch)
     writer.add_scalar('val_loss', val_loss, epoch)
 
-    # 返回验证损失，供scheduler使用
-    return val_loss
+    # 返回验证精度和损失，供scheduler和早停机制使用
+    return accuracy, val_loss
+
+
+# 早停机制类
+class EarlyStopping:
+    """
+    监听验证精度，如果连续patience个epoch没有改进，则停止训练
+    """
+    def __init__(self, patience=10, verbose=False, delta=0.0001):
+        """
+        Args:
+            patience (int): 连续多少个epoch没有改进后停止训练，默认10
+            verbose (bool): 是否打印详细信息，默认False
+            delta (float): 最小改进阈值，精度提升小于delta视为没有改进
+        """
+        self.patience = patience
+        self.verbose = verbose
+        self.delta = delta
+        self.counter = 0  # 记录没有改进的epoch次数
+        self.best_val_acc = None  # 记录最佳验证精度
+        self.early_stop = False  # 是否停止训练的标志
+
+    def __call__(self, val_acc):
+        """
+        检查验证精度是否改进
+        Args:
+            val_acc (float): 当前epoch的验证精度
+        Returns:
+            bool: 是否应该停止训练
+        """
+        if self.best_val_acc is None:
+            # 第一个epoch，记录最佳精度
+            self.best_val_acc = val_acc
+        elif val_acc > self.best_val_acc + self.delta:
+            # 精度有改进
+            self.best_val_acc = val_acc
+            self.counter = 0  # 重置计数器
+            if self.verbose:
+                print(f'✅ Validation accuracy improved to {val_acc:.4f}')
+        else:
+            # 精度没有改进
+            self.counter += 1
+            if self.verbose:
+                print(f'⚠️  No improvement for {self.counter}/{self.patience} epochs (best: {self.best_val_acc:.4f})')
+
+            # 检查是否应该停止
+            if self.counter >= self.patience:
+                self.early_stop = True
+                if self.verbose:
+                    print(f'🛑 Early stopping triggered after {self.counter} epochs without improvement')
+
+        return self.early_stop
 
 
 # 初始化学习率调度器
@@ -230,7 +281,7 @@ def create_scheduler(optimizer, args):
         scheduler = lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=args.epochs)
     elif args.scheduler == 'plateau':
         # ReduceLROnPlateau: 当验证集的准确率没有提升时，将学习率衰减
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, factor=0.5)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=4, factor=0.6)
     else:
         return None
 
@@ -255,11 +306,11 @@ def main():
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=100, metavar='N',
                         help='input batch size for training (default: 128)')
-    parser.add_argument('--test-batch-size', type=int, default=600, metavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=500, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=100, metavar='N',
+    parser.add_argument('--epochs', type=int, default=200, metavar='N',
                         help='number of epochs to train (default: 50)')
-    parser.add_argument('--lr', type=float, default=0.05, metavar='LR',
+    parser.add_argument('--lr', type=float, default=0.04, metavar='LR',
                         help='learning rate (default: 0.01)')
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                         help='SGD momentum (default: 0.9) - 注：使用Adam优化器时此参数不起作用')
@@ -276,7 +327,7 @@ def main():
                         help='disables Mac GPU (MPS) training, use CPU instead')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=20, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=40, metavar='N',
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
@@ -286,7 +337,7 @@ def main():
 
     parser.add_argument('--dir', default='logs', metavar='L',
                         help='directory where summary logs are stored')
-    parser.add_argument('--dropout', type=float, default=0.06, metavar='D',
+    parser.add_argument('--dropout', type=float, default=0.02, metavar='D',
                         help='dropout rate (default: 0.1)')
     if dist.is_available():
         parser.add_argument('--backend', type=str, help='Distributed backend',
@@ -403,14 +454,17 @@ def main():
     else:
         print('No learning rate scheduler, using fixed learning rate')
 
-    # ========== 11. 训练循环 ==========
+    # ========== 11. 初始化早停机制 ==========
+    early_stopping = EarlyStopping(patience=10, verbose=True, delta=0.0001)
+
+    # ========== 12. 训练循环（含早停） ==========
     print("begin training: ", datetime.now().strftime('%y-%m-%d %H:%M:%S'))
     for epoch in range(1, args.epochs + 1):
         # 在训练集上进行训练，获取平均训练损失
         train_loss = train(args, model, device, train_loader, optimizer, epoch, writer)
 
-        # 在测试集上进行评估，获取验证损失
-        val_loss = test(args, model, device, test_loader, writer, epoch)
+        # 在测试集上进行评估，获取验证精度和损失
+        val_acc, val_loss = test(args, model, device, test_loader, writer, epoch)
 
         # 记录平均训练损失到TensorBoard
         writer.add_scalar('train_loss_avg', train_loss, epoch)
@@ -432,6 +486,15 @@ def main():
                 scheduler.step(val_loss)
             else:
                 scheduler.step()
+
+        # 检查早停条件
+        if early_stopping(val_acc):
+            print(f'\n{"="*60}')
+            print(f'🛑 早停触发！在epoch {epoch}停止训练')
+            print(f'最佳验证精度: {early_stopping.best_val_acc:.4f}')
+            print(f'连续{early_stopping.counter}个epoch没有改进')
+            print(f'{"="*60}\n')
+            break
 
     print("end training: ", datetime.now().strftime('%y-%m-%d %H:%M:%S'))
 
