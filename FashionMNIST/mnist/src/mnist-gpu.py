@@ -43,7 +43,7 @@ class Net(nn.Module):
 
 
         # Dropout层：在卷积层后应用2D dropout
-        self.dropout2d = nn.Dropout2d(p=dropout_rate)
+        #self.dropout2d = nn.Dropout2d(p=dropout_rate)
 
         # 第一层全连接层：输入=256*1*1=256（经过多次池化后）
         # 计算过程：28x28 -> 24x24(conv1) -> 12x12(pool) -> 10x10(conv2) -> 5x5(pool)
@@ -231,7 +231,7 @@ def create_scheduler(optimizer, args):
         scheduler = lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=args.epochs)
     elif args.scheduler == 'plateau':
         # ReduceLROnPlateau: 当验证集的准确率没有提升时，将学习率衰减
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, factor=0.1)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, factor=0.5)
     else:
         return None
 
@@ -287,8 +287,8 @@ def main():
 
     parser.add_argument('--dir', default='logs', metavar='L',
                         help='directory where summary logs are stored')
-    parser.add_argument('--dropout', type=float, default=0.2, metavar='D',
-                        help='dropout rate (default: 0.2)')
+    parser.add_argument('--dropout', type=float, default=0.1, metavar='D',
+                        help='dropout rate (default: 0.1)')
     if dist.is_available():
         parser.add_argument('--backend', type=str, help='Distributed backend',
                             choices=[dist.Backend.GLOO, dist.Backend.NCCL, dist.Backend.MPI],
@@ -342,7 +342,7 @@ def main():
     # MPS: 不使用pin_memory（Mac GPU不支持），使用多进程加速
     # CPU: 基础多进程配置
     if use_cuda:
-        kwargs = {'num_workers': 4, 'pin_memory': True, 'persistent_workers': True}
+        kwargs = {'num_workers': 32, 'pin_memory': True, 'persistent_workers': True}
     elif use_mps:
         # Mac GPU 不支持 pin_memory，但可以用多进程加速数据加载
         kwargs = {'num_workers': 6, 'pin_memory': False, 'persistent_workers': True}
@@ -393,8 +393,8 @@ def main():
     # 使用Adam优化器：自适应学习率，特别适合深层网络
     # Adam = Adaptive Moment Estimation，结合了momentum和RMSprop的优点
     # weight_decay=1e-4 是L2正则化，防止权重过大（过拟合）
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=1e-4)
-    #optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    #optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
     # ========== 10.5. 初始化学习率调度器 ==========
     # 根据参数初始化学习率调度器（可选）
