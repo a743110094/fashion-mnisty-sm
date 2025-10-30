@@ -297,7 +297,7 @@ def create_scheduler(optimizer, args):
         scheduler = lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=args.epochs)
     elif args.scheduler == 'plateau':
         # ReduceLROnPlateau: 当验证集的准确率没有提升时，将学习率衰减
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.7)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=6, factor=0.95)
     else:
         return None
 
@@ -320,11 +320,11 @@ def is_distributed():
 def main():
     # ========== 1. 解析命令行参数 ==========
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=20, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=100, metavar='N',
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=2000, metavar='N',
+    parser.add_argument('--epochs', type=int, default=300, metavar='N',
                         help='number of epochs to train (default: 50)')
     parser.add_argument('--lr', type=float, default=0.04, metavar='LR',
                         help='learning rate (default: 0.01)')
@@ -464,7 +464,7 @@ def main():
     # Adam = Adaptive Moment Estimation，结合了momentum和RMSprop的优点
     # weight_decay=1e-4 是L2正则化，防止权重过大（过拟合）
     #optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=1e-4)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
 
     # ========== 10.5. 初始化学习率调度器 ==========
     # 根据参数初始化学习率调度器（可选）
@@ -509,11 +509,11 @@ def main():
 
         # 检查早停条件（传入model用于保存最佳模型状态）
         if early_stopping(val_acc, model):
-            print(f'\n{"="*60}')
+            print(f'\n{"="*40}')
             print(f'🛑 早停触发！在epoch {epoch}停止训练')
             print(f'最佳验证精度: {early_stopping.best_val_acc:.4f}')
             print(f'连续{early_stopping.counter}个epoch没有改进')
-            print(f'{"="*60}\n')
+            print(f'{"="*40}\n')
             break
 
     print("end training: ", datetime.now().strftime('%y-%m-%d %H:%M:%S'))
