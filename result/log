@@ -1,0 +1,11 @@
+10: 130次左右 成功早停  损失0.25  acc0.9099 保留模型文件1
+python mnist-gpu.py --batch-size=1000 --scheduler=cosine --lr=0.04 --min-lr=0.002 --epochs=150
+
+20: 100次左右 失败 困在0.35 acc0.86附近 
+python mnist-gpu.py --batch-size=1000 --scheduler=cosine --lr=0.1 --min-lr=0.001 --epochs=200
+
+30: 200次 没有早停 损失0.2565 acc0.9066 不保留文件
+python mnist-gpu.py --batch-size=1000 --scheduler=cosine --lr=0.06 --min-lr=0.001 --epochs=200
+
+40: 200次 没有早停 损失0.2555 acc0.9060 保留文件2
+python mnist-gpu.py --batch-size=1000 --scheduler=cosine --lr=0.06 --min-lr=0.0001 --epochs=200

@@ -385,7 +385,7 @@ def main():
 
     parser.add_argument('--dir', default='logs', metavar='L',
                         help='directory where summary logs are stored')
-    parser.add_argument('--dropout', type=float, default=0.5, metavar='D',
+    parser.add_argument('--dropout', type=float, default=0.3, metavar='D',
                         help='dropout rate (default: 0.2)')
     if dist.is_available():
         parser.add_argument('--backend', type=str, help='Distributed backend',
@@ -458,8 +458,8 @@ def main():
                     transform=transforms.Compose([
                         transforms.RandomCrop(28, padding=4),  # 随机裁剪保持尺寸
                         transforms.RandomHorizontalFlip(),  # 随机水平翻转
-                        transforms.RandomRotation(45),  # 随机旋转±10度
-                        transforms.RandomAffine(degrees=0, translate=(0.3, 0.4)),  # 随机平移±10%
+                        transforms.RandomRotation(20),  # 随机旋转±20度
+                        transforms.RandomAffine(degrees=0, translate=(0.15, 0.15)),  # 随机平移±15%
                         transforms.ColorJitter(brightness=0.2),  # 随机亮度调整±20%
                         transforms.ToTensor(),
                         transforms.Normalize((0.1307,), (0.3081,))
