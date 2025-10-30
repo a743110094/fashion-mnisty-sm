@@ -24,7 +24,7 @@ WORLD_SIZE = int(os.environ.get('WORLD_SIZE', 1))
 
 # 卷积神经网络模型，用于图像分类
 class Net(nn.Module):
-    def __init__(self, dropout_rate=0.5):
+    def __init__(self, dropout_rate=0.3):
         super(Net, self).__init__()
         # 第一层卷积：输入通道=1(灰度图), 输出通道=32, 卷积核=5x5, 步长=1
         self.conv1 = nn.Conv2d(1, 64, 5, 1)
@@ -281,7 +281,7 @@ def create_scheduler(optimizer, args):
     elif args.scheduler == 'cosine':
         # CosineAnnealingLR: 使用余弦函数从初始LR衰减到最小LR
         # T_max 是周期（epoch数），after T_max 个 epoch 学习率将衰减到最小值
-        scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+        scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.min_lr)
     elif args.scheduler == 'linear':
         # LinearLR: 线性衰减学习率
         # total_iters 是总迭代次数
@@ -311,23 +311,25 @@ def is_distributed():
 def main():
     # ========== 1. 解析命令行参数 ==========
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=200, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=50, metavar='N',
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size', type=int, default=500, metavar='N',
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=2000, metavar='N',
                         help='number of epochs to train (default: 50)')
-    parser.add_argument('--lr', type=float, default=0.04, metavar='LR',
+    parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                         help='learning rate (default: 0.01)')
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                         help='SGD momentum (default: 0.9) - 注：使用Adam优化器时此参数不起作用')
-    parser.add_argument('--scheduler', type=str, default='plateau', metavar='S',
+    parser.add_argument('--scheduler', type=str, default='cosine', metavar='S',
                         choices=['none', 'step', 'exponential', 'cosine', 'linear', 'plateau'],
-                        help='learning rate scheduler: none, step, exponential, cosine, linear, plateau (default: plateau)')
+                        help='learning rate scheduler: none, step, exponential, cosine, linear, plateau (default: cosine)')
     parser.add_argument('--scheduler-step', type=int, default=10, metavar='N',
                         help='step size for StepLR scheduler (fault: 30)')
     parser.add_argument('--scheduler-gamma', type=float, default=0.5, metavar='G',
                         help='gamma for StepLR/ExponentialLR scheduler (default: 0.02)')
+    parser.add_argument('--min-lr', type=float, default=1e-4, metavar='LR',
+                        help='minimum learning rate for cosine annealing scheduler (default: 1e-4)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables GPU training (CUDA and MPS)')
     parser.add_argument('--no-mps', action='store_true', default=False,
@@ -344,8 +346,8 @@ def main():
 
     parser.add_argument('--dir', default='logs', metavar='L',
                         help='directory where summary logs are stored')
-    parser.add_argument('--dropout', type=float, default=0.01, metavar='D',
-                        help='dropout rate (default: 0.1)')
+    parser.add_argument('--dropout', type=float, default=0.2, metavar='D',
+                        help='dropout rate (default: 0.2)')
     if dist.is_available():
         parser.add_argument('--backend', type=str, help='Distributed backend',
                             choices=[dist.Backend.GLOO, dist.Backend.NCCL, dist.Backend.MPI],
@@ -415,6 +417,8 @@ def main():
     train_loader = torch.utils.data.DataLoader(
         datasets.FashionMNIST(args.dataset, train=True, download=True,
                     transform=transforms.Compose([
+                        transforms.RandomCrop(28, padding=4),  # 随机裁剪保持尺寸
+                        transforms.RandomHorizontalFlip(),  # 随机水平翻转
                         transforms.RandomRotation(10),  # 随机旋转±10度
                         transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # 随机平移±10%
                         transforms.ColorJitter(brightness=0.2),  # 随机亮度调整±20%

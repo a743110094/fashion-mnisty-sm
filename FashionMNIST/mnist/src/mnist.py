@@ -20,17 +20,25 @@ class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(1, 20, 5, 1)
+        self.bn1 = nn.BatchNorm2d(20)
         self.conv2 = nn.Conv2d(20, 50, 5, 1)
+        self.bn2 = nn.BatchNorm2d(50)
         self.fc1 = nn.Linear(4*4*50, 500)
+        self.dropout = nn.Dropout(0.3)
         self.fc2 = nn.Linear(500, 10)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = F.relu(x)
         x = F.max_pool2d(x, 2, 2)
-        x = F.relu(self.conv2(x))
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = F.relu(x)
         x = F.max_pool2d(x, 2, 2)
         x = x.view(-1, 4*4*50)
         x = F.relu(self.fc1(x))
+        x = self.dropout(x)
         x = self.fc2(x)
         return F.log_softmax(x, dim=1)
 
@@ -106,6 +114,9 @@ def main():
 
     parser.add_argument('--save-model-dir', type=str, default='/data/mnt', help='For Saving directory')
 
+    parser.add_argument('--min-lr', type=float, default=1e-4, metavar='LR',
+                        help='minimum learning rate for cosine annealing (default: 1e-4)')
+
     parser.add_argument('--dir', default='logs', metavar='L',
                         help='directory where summary logs are stored')
     if dist.is_available():
@@ -131,6 +142,8 @@ def main():
     train_loader = torch.utils.data.DataLoader(
         datasets.FashionMNIST(args.dataset, train=True, download=True,
                     transform=transforms.Compose([
+                        transforms.RandomCrop(28, padding=4),
+                        transforms.RandomHorizontalFlip(),
                         transforms.ToTensor(),
                         transforms.Normalize((0.1307,), (0.3081,))
                     ])),
@@ -149,10 +162,12 @@ def main():
         model = Distributor(model)
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.min_lr)
     print("begin training: ", datetime.now().strftime('%y-%m-%d %H:%M:%S'))
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch, writer)
         test(args, model, device, test_loader, writer, epoch)
+        scheduler.step()
         current_lrs = [group['lr'] for group in optimizer.param_groups]
         if len(current_lrs) == 1:
             print('Epoch {} learning rate: {:.6f}'.format(epoch, current_lrs[0]))
