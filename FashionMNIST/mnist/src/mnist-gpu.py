@@ -27,28 +27,16 @@ class Net(nn.Module):
     def __init__(self, dropout_rate=0.3):
         super(Net, self).__init__()
         # 卷积层1：1x28x28 -> 64x28x28
-        self.conv1 = nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=5, stride=1, padding=2)
         self.bn1 = nn.BatchNorm2d(64)
 
-        # 卷积层2：64x28x28 -> 128x28x28
+        # 卷积层2：64x14x14 -> 128x14x14
         self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
         self.bn2 = nn.BatchNorm2d(128)
 
-        # 卷积层3：128x14x14 -> 256x14x14
+        # 卷积层3：128x7x7 -> 256x7x7
         self.conv3 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
         self.bn3 = nn.BatchNorm2d(256)
-
-        # 卷积层4：256x14x14 -> 256x14x14
-        self.conv4 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.bn4 = nn.BatchNorm2d(256)
-
-        # 卷积层5：256x7x7 -> 512x7x7
-        self.conv5 = nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1)
-        self.bn5 = nn.BatchNorm2d(512)
-
-        # 卷积层6：512x7x7 -> 512x7x7
-        self.conv6 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
-        self.bn6 = nn.BatchNorm2d(512)
 
         # Dropout层：在卷积层后应用2D dropout
         self.dropout2d = nn.Dropout2d(p=dropout_rate)
@@ -56,8 +44,8 @@ class Net(nn.Module):
         # 自适应平均池化，将空间维度压缩到1x1
         self.gap = nn.AdaptiveAvgPool2d((1, 1))
 
-        # 全连接层：输入=512*1*1 -> 256
-        self.fc1 = nn.Linear(512, 256)
+        # 全连接层：输入=256*1*1 -> 256
+        self.fc1 = nn.Linear(256, 256)
         self.bn_fc = nn.BatchNorm1d(256)
 
         # Dropout层：在全连接层后应用dropout
@@ -67,22 +55,19 @@ class Net(nn.Module):
         self.fc2 = nn.Linear(256, 10)
 
     def forward(self, x):
-        # 第一个卷积块：两层卷积后池化
+        # 第一个卷积块：卷积 -> BN -> ReLU -> MaxPool
         x = F.relu(self.bn1(self.conv1(x)))
+        x = F.max_pool2d(x, 2, 2)  # 28x28 -> 14x14
+        #x = self.dropout2d(x)
+
+        # 第二个卷积块：卷积 -> BN -> ReLU -> MaxPool
         x = F.relu(self.bn2(self.conv2(x)))
-        x = F.max_pool2d(x, 2, 2)
+        x = F.max_pool2d(x, 2, 2)  # 14x14 -> 7x7
         #x = self.dropout2d(x)
 
-        # 第二个卷积块：两层卷积后池化
+        # 第三个卷积块：卷积 -> BN -> ReLU -> MaxPool
         x = F.relu(self.bn3(self.conv3(x)))
-        x = F.relu(self.bn4(self.conv4(x)))
-        x = F.max_pool2d(x, 2, 2)
-        #x = self.dropout2d(x)
-
-        # 第三个卷积块：两层卷积后池化
-        x = F.relu(self.bn5(self.conv5(x)))
-        x = F.relu(self.bn6(self.conv6(x)))
-        x = F.max_pool2d(x, 2, 2)
+        x = F.max_pool2d(x, 2, 2)  # 7x7 -> 3x3
         #x = self.dropout2d(x)
 
         # 全局平均池化压缩空间维度
@@ -104,7 +89,7 @@ class Net(nn.Module):
         return F.log_softmax(x, dim=1)
 
 # 训练函数：对一个epoch的数据进行训练
-def train(args, model, device, train_loader, optimizer, epoch, writer):
+def train(args, model, device, train_loader, test_loader, optimizer, epoch, writer, early_stopping):
     # 设置模型为训练模式（启用dropout、batchnorm等）
     model.train()
 
@@ -149,12 +134,25 @@ def train(args, model, device, train_loader, optimizer, epoch, writer):
             niter = epoch * len(train_loader) + batch_idx
             writer.add_scalar('loss', loss.item(), niter)
 
+        # 每隔val_interval个batch进行一次验证（在epoch内多次验证）
+        if args.val_interval > 0 and batch_idx > 0 and batch_idx % args.val_interval == 0:
+            print(f'\n=== 中间验证 (Epoch {epoch}, Batch {batch_idx}/{len(train_loader)}) ===')
+            # 在测试集上评估，获取验证损失
+            val_acc, val_loss = test(args, model, device, test_loader, writer, epoch, batch_idx)
+
+            # 检查是否需要保存模型（基于验证损失）
+            if early_stopping.check_and_save(val_loss, val_acc, model):
+                print(f'💾 保存新的最佳模型 (验证损失: {val_loss:.4f}, 验证精度: {val_acc:.4f})')
+
+            # 切换回训练模式
+            model.train()
+
     # 计算该epoch的平均训练损失
     avg_train_loss = train_loss / num_batches
     return avg_train_loss
 
 # 测试函数：在测试集上评估模型性能
-def test(args, model, device, test_loader, writer, epoch):
+def test(args, model, device, test_loader, writer, epoch, batch_idx=None):
     # 设置模型为评估模式（禁用dropout、batchnorm等）
     model.eval()
 
@@ -189,8 +187,14 @@ def test(args, model, device, test_loader, writer, epoch):
     print('\nValidation Loss: {:.4f}, accuracy={:.4f}\n'.format(val_loss, accuracy))
 
     # 记录准确率和验证损失到TensorBoard
-    writer.add_scalar('accuracy', accuracy, epoch)
-    writer.add_scalar('val_loss', val_loss, epoch)
+    # 如果是epoch内的验证，使用更精细的step计数
+    if batch_idx is not None:
+        step = epoch * 10000 + batch_idx  # 使用更大的乘数以避免冲突
+        writer.add_scalar('accuracy_intra_epoch', accuracy, step)
+        writer.add_scalar('val_loss_intra_epoch', val_loss, step)
+    else:
+        writer.add_scalar('accuracy', accuracy, epoch)
+        writer.add_scalar('val_loss', val_loss, epoch)
 
     # 返回验证精度和损失，供scheduler和早停机制使用
     return accuracy, val_loss
@@ -199,57 +203,81 @@ def test(args, model, device, test_loader, writer, epoch):
 # 早停机制类
 class EarlyStopping:
     """
-    监听验证精度，如果连续patience个epoch没有改进，则停止训练
-    同时保存最佳模型的状态字典
+    监听验证损失，如果连续patience次验证没有改进，则停止训练
+    同时实时保存最佳模型的状态字典（基于验证损失）
     """
     def __init__(self, patience=10, verbose=False, delta=0.0001):
         """
         Args:
-            patience (int): 连续多少个epoch没有改进后停止训练，默认10
+            patience (int): 连续多少次验证没有改进后停止训练，默认10
             verbose (bool): 是否打印详细信息，默认False
-            delta (float): 最小改进阈值，精度提升小于delta视为没有改进
+            delta (float): 最小改进阈值，损失降低小于delta视为没有改进
         """
         self.patience = patience
         self.verbose = verbose
         self.delta = delta
-        self.counter = 0  # 记录没有改进的epoch次数
-        self.best_val_acc = None  # 记录最佳验证精度
+        self.counter = 0  # 记录没有改进的验证次数
+        self.best_val_loss = None  # 记录最佳验证损失
+        self.best_val_acc = None  # 记录最佳验证精度（仅用于显示）
         self.best_model_state = None  # 保存最佳模型的状态字典
-        self.best_epoch = None  # 记录最佳模型出现的epoch
         self.early_stop = False  # 是否停止训练的标志
+        self.val_count = 0  # 验证次数计数器
 
-    def __call__(self, val_acc, model):
+    def check_and_save(self, val_loss, val_acc, model):
         """
-        检查验证精度是否改进，并保存最佳模型
+        检查验证损失是否改进，如果改进则保存模型
         Args:
-            val_acc (float): 当前epoch的验证精度
+            val_loss (float): 当前的验证损失
+            val_acc (float): 当前的验证精度
+            model: 当前的模型对象
+        Returns:
+            bool: 是否保存了新的最佳模型
+        """
+        self.val_count += 1
+        saved = False
+
+        if self.best_val_loss is None:
+            # 第一次验证，记录最佳损失和模型
+            self.best_val_loss = val_loss
+            self.best_val_acc = val_acc
+            self.best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            saved = True
+            if self.verbose:
+                print(f'✅ 初始化最佳模型 (损失: {val_loss:.4f}, 精度: {val_acc:.4f})')
+        elif val_loss < self.best_val_loss - self.delta:
+            # 损失有改进，保存新的最佳模型
+            self.best_val_loss = val_loss
+            self.best_val_acc = val_acc
+            self.best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            self.counter = 0  # 重置计数器
+            saved = True
+            if self.verbose:
+                print(f'✅ 验证损失降低到 {val_loss:.4f} (精度: {val_acc:.4f})')
+        else:
+            # 损失没有改进
+            self.counter += 1
+            if self.verbose:
+                print(f'⚠️  连续 {self.counter}/{self.patience} 次验证无改进 (最佳损失: {self.best_val_loss:.4f})')
+
+        return saved
+
+    def __call__(self, val_loss, val_acc, model):
+        """
+        检查是否应该停止训练（兼容旧接口）
+        Args:
+            val_loss (float): 当前的验证损失
+            val_acc (float): 当前的验证精度
             model: 当前的模型对象
         Returns:
             bool: 是否应该停止训练
         """
-        if self.best_val_acc is None:
-            # 第一个epoch，记录最佳精度和模型
-            self.best_val_acc = val_acc
-            self.best_model_state = {k: v.cpu() for k, v in model.state_dict().items()}
-            self.best_epoch = 1
-        elif val_acc > self.best_val_acc + self.delta:
-            # 精度有改进，保存新的最佳模型
-            self.best_val_acc = val_acc
-            self.best_model_state = {k: v.cpu() for k, v in model.state_dict().items()}
-            self.counter = 0  # 重置计数器
-            if self.verbose:
-                print(f'✅ Validation accuracy improved to {val_acc:.4f}')
-        else:
-            # 精度没有改进
-            self.counter += 1
-            if self.verbose:
-                print(f'⚠️  No improvement for {self.counter}/{self.patience} epochs (best: {self.best_val_acc:.4f})')
+        self.check_and_save(val_loss, val_acc, model)
 
-            # 检查是否应该停止
-            if self.counter >= self.patience:
-                self.early_stop = True
-                if self.verbose:
-                    print(f'🛑 Early stopping triggered after {self.counter} epochs without improvement')
+        # 检查是否应该停止
+        if self.counter >= self.patience:
+            self.early_stop = True
+            if self.verbose:
+                print(f'🛑 早停触发！连续 {self.counter} 次验证无改进')
 
         return self.early_stop
 
@@ -347,6 +375,8 @@ def main():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=40, metavar='N',
                         help='how many batches to wait before logging training status')
+    parser.add_argument('--val-interval', type=int, default=0, metavar='N',
+                        help='how many batches to wait before validation (0 = only validate at end of epoch)')
     parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
     parser.add_argument('--dataset', type=str, default='../data', help='For dataset director')
@@ -479,11 +509,16 @@ def main():
 
     # ========== 12. 训练循环（含早停） ==========
     print("begin training: ", datetime.now().strftime('%y-%m-%d %H:%M:%S'))
+    if args.val_interval > 0:
+        print(f'启用epoch内验证：每 {args.val_interval} 个batch验证一次')
+
     for epoch in range(1, args.epochs + 1):
         # 在训练集上进行训练，获取平均训练损失
-        train_loss = train(args, model, device, train_loader, optimizer, epoch, writer)
+        # train函数内部会根据val_interval进行中间验证
+        train_loss = train(args, model, device, train_loader, test_loader, optimizer, epoch, writer, early_stopping)
 
-        # 在测试集上进行评估，获取验证精度和损失
+        # 在epoch结束时进行最终验证
+        print(f'\n=== Epoch {epoch} 结束验证 ===')
         val_acc, val_loss = test(args, model, device, test_loader, writer, epoch)
 
         # 记录平均训练损失到TensorBoard
@@ -508,11 +543,12 @@ def main():
                 scheduler.step()
 
         # 检查早停条件（传入model用于保存最佳模型状态）
-        if early_stopping(val_acc, model):
+        if early_stopping(val_loss, val_acc, model):
             print(f'\n{"="*40}')
             print(f'🛑 早停触发！在epoch {epoch}停止训练')
+            print(f'最佳验证损失: {early_stopping.best_val_loss:.4f}')
             print(f'最佳验证精度: {early_stopping.best_val_acc:.4f}')
-            print(f'连续{early_stopping.counter}个epoch没有改进')
+            print(f'连续{early_stopping.counter}次验证没有改进')
             print(f'{"="*40}\n')
             break
 
@@ -525,8 +561,11 @@ def main():
 
         # 如果使用了早停机制，保存最佳模型；否则保存最后的模型
         if early_stopping.best_model_state is not None:
-            # 保存最佳模型（早停触发或正常训练完成）
-            print(f'💾 保存最佳模型（验证精度: {early_stopping.best_val_acc:.4f}）')
+            # 保存最佳模型（基于验证损失）
+            print(f'💾 保存最佳模型')
+            print(f'   验证损失: {early_stopping.best_val_loss:.4f}')
+            print(f'   验证精度: {early_stopping.best_val_acc:.4f}')
+            print(f'   总验证次数: {early_stopping.val_count}')
             torch.save(early_stopping.best_model_state, os.path.join(args.save_model_dir, "mnist_cnn.pt"))
         else:
             # 降级方案：保存当前模型状态
