@@ -26,29 +26,38 @@ WORLD_SIZE = int(os.environ.get('WORLD_SIZE', 1))
 class Net(nn.Module):
     def __init__(self, dropout_rate=0.3):
         super(Net, self).__init__()
-        # 第一层卷积：输入通道=1(灰度图), 输出通道=32, 卷积核=5x5, 步长=1
-        self.conv1 = nn.Conv2d(1, 64, 5, 1)
-        # 第一层批量归一化（卷积层后）
+        # 卷积层1：1x28x28 -> 64x28x28
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1)
         self.bn1 = nn.BatchNorm2d(64)
 
-        # 第二层卷积：输入通道=64, 输出通道=128, 卷积核=3x3, 步长=1
-        self.conv2 = nn.Conv2d(64, 128, 3, 1)
-        # 第二层批量归一化（卷积层后）
+        # 卷积层2：64x28x28 -> 128x28x28
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
         self.bn2 = nn.BatchNorm2d(128)
 
-        # 第三层卷积：输入通道=128, 输出通道=256, 卷积核=3x3, 步长=1
-        self.conv3 = nn.Conv2d(128, 256, 3, 1)
-        # 第三层批量归一化（卷积层后）
+        # 卷积层3：128x14x14 -> 256x14x14
+        self.conv3 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
         self.bn3 = nn.BatchNorm2d(256)
+
+        # 卷积层4：256x14x14 -> 256x14x14
+        self.conv4 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+        self.bn4 = nn.BatchNorm2d(256)
+
+        # 卷积层5：256x7x7 -> 512x7x7
+        self.conv5 = nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1)
+        self.bn5 = nn.BatchNorm2d(512)
+
+        # 卷积层6：512x7x7 -> 512x7x7
+        self.conv6 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+        self.bn6 = nn.BatchNorm2d(512)
 
         # Dropout层：在卷积层后应用2D dropout
         self.dropout2d = nn.Dropout2d(p=dropout_rate)
 
-        # 第一层全连接层：输入=256*1*1=256（经过多次池化后）
-        # 计算过程：28x28 -> 24x24(conv1) -> 12x12(pool) -> 10x10(conv2) -> 5x5(pool)
-        #        -> 3x3(conv3) -> 1x1(pool) -> fc1(256维)
-        self.fc1 = nn.Linear(256*1*1, 256)
-        # 全连接层批量归一化
+        # 自适应平均池化，将空间维度压缩到1x1
+        self.gap = nn.AdaptiveAvgPool2d((1, 1))
+
+        # 全连接层：输入=512*1*1 -> 256
+        self.fc1 = nn.Linear(512, 256)
         self.bn_fc = nn.BatchNorm1d(256)
 
         # Dropout层：在全连接层后应用dropout
@@ -58,35 +67,35 @@ class Net(nn.Module):
         self.fc2 = nn.Linear(256, 10)
 
     def forward(self, x):
-        # 第一个卷积块：卷积 -> BatchNorm -> ReLU激活 -> 最大池化(2x2) -> Dropout
-        x = self.conv1(x)  # 28x28 -> 24x24
-        x = self.bn1(x)  # 批量归一化
-        x = F.relu(x)  # ReLU激活
-        x = F.max_pool2d(x, 2, 2)  # 24x24 -> 12x12
-        x = self.dropout2d(x)  # 应用2D dropout（池化后）
+        # 第一个卷积块：两层卷积后池化
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.max_pool2d(x, 2, 2)
+        #x = self.dropout2d(x)
 
-        # 第二个卷积块：卷积 -> BatchNorm -> ReLU激活 -> 最大池化(2x2) -> Dropout
-        x = self.conv2(x)  # 12x12 -> 10x10
-        x = self.bn2(x)  # 批量归一化
-        x = F.relu(x)  # ReLU激活
-        x = F.max_pool2d(x, 2, 2)  # 10x10 -> 5x5
-        x = self.dropout2d(x)  # 应用2D dropout（池化后）
+        # 第二个卷积块：两层卷积后池化
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu(self.bn4(self.conv4(x)))
+        x = F.max_pool2d(x, 2, 2)
+        #x = self.dropout2d(x)
 
-        # 第三个卷积块：卷积 -> BatchNorm -> ReLU激活 -> 最大池化(2x2) -> Dropout
-        x = self.conv3(x)  # 5x5 -> 3x3
-        x = self.bn3(x)  # 批量归一化
-        x = F.relu(x)  # ReLU激活
-        x = F.max_pool2d(x, 2, 2)  # 3x3 -> 1x1
-        x = self.dropout2d(x)  # 应用2D dropout（池化后）
+        # 第三个卷积块：两层卷积后池化
+        x = F.relu(self.bn5(self.conv5(x)))
+        x = F.relu(self.bn6(self.conv6(x)))
+        x = F.max_pool2d(x, 2, 2)
+        #x = self.dropout2d(x)
 
-        # 展平为一维向量：(batch_size, 256*1*1)
-        x = x.view(-1, 256*1*1)
+        # 全局平均池化压缩空间维度
+        x = self.gap(x)
+
+        # 展平为一维向量
+        x = x.view(x.size(0), -1)
 
         # 全连接层 -> BatchNorm -> ReLU激活 -> Dropout
         x = self.fc1(x)
-        x = self.bn_fc(x)  # 批量归一化
-        x = F.relu(x)  # ReLU激活
-        x = self.dropout(x)  # 应用dropout（隐藏层后）
+        x = self.bn_fc(x)
+        x = F.relu(x)
+        x = self.dropout(x)
 
         # 输出层（不带激活、不带dropout）
         x = self.fc2(x)
@@ -288,7 +297,7 @@ def create_scheduler(optimizer, args):
         scheduler = lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=args.epochs)
     elif args.scheduler == 'plateau':
         # ReduceLROnPlateau: 当验证集的准确率没有提升时，将学习率衰减
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.8)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.7)
     else:
         return None
 
@@ -311,17 +320,17 @@ def is_distributed():
 def main():
     # ========== 1. 解析命令行参数 ==========
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=50, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=20, metavar='N',
                         help='input batch size for training (default: 128)')
-    parser.add_argument('--test-batch-size', type=int, default=500, metavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=2000, metavar='N',
                         help='number of epochs to train (default: 50)')
-    parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
+    parser.add_argument('--lr', type=float, default=0.04, metavar='LR',
                         help='learning rate (default: 0.01)')
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                         help='SGD momentum (default: 0.9) - 注：使用Adam优化器时此参数不起作用')
-    parser.add_argument('--scheduler', type=str, default='cosine', metavar='S',
+    parser.add_argument('--scheduler', type=str, default='plateau', metavar='S',
                         choices=['none', 'step', 'exponential', 'cosine', 'linear', 'plateau'],
                         help='learning rate scheduler: none, step, exponential, cosine, linear, plateau (default: cosine)')
     parser.add_argument('--scheduler-step', type=int, default=10, metavar='N',
@@ -346,7 +355,7 @@ def main():
 
     parser.add_argument('--dir', default='logs', metavar='L',
                         help='directory where summary logs are stored')
-    parser.add_argument('--dropout', type=float, default=0.2, metavar='D',
+    parser.add_argument('--dropout', type=float, default=0.5, metavar='D',
                         help='dropout rate (default: 0.2)')
     if dist.is_available():
         parser.add_argument('--backend', type=str, help='Distributed backend',
@@ -419,8 +428,8 @@ def main():
                     transform=transforms.Compose([
                         transforms.RandomCrop(28, padding=4),  # 随机裁剪保持尺寸
                         transforms.RandomHorizontalFlip(),  # 随机水平翻转
-                        transforms.RandomRotation(10),  # 随机旋转±10度
-                        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # 随机平移±10%
+                        transforms.RandomRotation(45),  # 随机旋转±10度
+                        transforms.RandomAffine(degrees=0, translate=(0.3, 0.4)),  # 随机平移±10%
                         transforms.ColorJitter(brightness=0.2),  # 随机亮度调整±20%
                         transforms.ToTensor(),
                         transforms.Normalize((0.1307,), (0.3081,))
