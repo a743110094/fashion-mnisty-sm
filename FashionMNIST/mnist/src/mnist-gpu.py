@@ -26,29 +26,17 @@ WORLD_SIZE = int(os.environ.get('WORLD_SIZE', 1))
 class Net(nn.Module):
     def __init__(self, dropout_rate=0.3):
         super(Net, self).__init__()
-        # 卷积层1：1x28x28 -> 64x28x28
-        self.conv1 = nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1)
+        # 卷积层1：1x28x28 -> 64x28x28 (5x5卷积核)
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=5, stride=1, padding=2)
         self.bn1 = nn.BatchNorm2d(64)
 
-        # 卷积层2：64x28x28 -> 128x28x28
+        # 卷积层2：64x14x14 -> 128x14x14 (3x3卷积核)
         self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
         self.bn2 = nn.BatchNorm2d(128)
 
-        # 卷积层3：128x14x14 -> 256x14x14
+        # 卷积层3：128x7x7 -> 256x7x7 (3x3卷积核)
         self.conv3 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
         self.bn3 = nn.BatchNorm2d(256)
-
-        # 卷积层4：256x14x14 -> 256x14x14
-        self.conv4 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.bn4 = nn.BatchNorm2d(256)
-
-        # 卷积层5：256x7x7 -> 512x7x7
-        self.conv5 = nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1)
-        self.bn5 = nn.BatchNorm2d(512)
-
-        # 卷积层6：512x7x7 -> 512x7x7
-        self.conv6 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
-        self.bn6 = nn.BatchNorm2d(512)
 
         # Dropout层：在卷积层后应用2D dropout
         self.dropout2d = nn.Dropout2d(p=dropout_rate)
@@ -56,8 +44,8 @@ class Net(nn.Module):
         # 自适应平均池化，将空间维度压缩到1x1
         self.gap = nn.AdaptiveAvgPool2d((1, 1))
 
-        # 全连接层：输入=512*1*1 -> 256
-        self.fc1 = nn.Linear(512, 256)
+        # 全连接层：输入=256*1*1 -> 256
+        self.fc1 = nn.Linear(256, 256)
         self.bn_fc = nn.BatchNorm1d(256)
 
         # Dropout层：在全连接层后应用dropout
@@ -67,21 +55,18 @@ class Net(nn.Module):
         self.fc2 = nn.Linear(256, 10)
 
     def forward(self, x):
-        # 第一个卷积块：两层卷积后池化
+        # 第一个卷积块：卷积 -> BN -> ReLU -> MaxPool (28x28 -> 14x14)
         x = F.relu(self.bn1(self.conv1(x)))
+        x = F.max_pool2d(x, 2, 2)
+        #x = self.dropout2d(x)
+
+        # 第二个卷积块：卷积 -> BN -> ReLU -> MaxPool (14x14 -> 7x7)
         x = F.relu(self.bn2(self.conv2(x)))
         x = F.max_pool2d(x, 2, 2)
         #x = self.dropout2d(x)
 
-        # 第二个卷积块：两层卷积后池化
+        # 第三个卷积块：卷积 -> BN -> ReLU -> MaxPool (7x7 -> 3x3)
         x = F.relu(self.bn3(self.conv3(x)))
-        x = F.relu(self.bn4(self.conv4(x)))
-        x = F.max_pool2d(x, 2, 2)
-        #x = self.dropout2d(x)
-
-        # 第三个卷积块：两层卷积后池化
-        x = F.relu(self.bn5(self.conv5(x)))
-        x = F.relu(self.bn6(self.conv6(x)))
         x = F.max_pool2d(x, 2, 2)
         #x = self.dropout2d(x)
 
@@ -297,7 +282,7 @@ def create_scheduler(optimizer, args):
         scheduler = lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=args.epochs)
     elif args.scheduler == 'plateau':
         # ReduceLROnPlateau: 当验证集的准确率没有提升时，将学习率衰减
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=6, factor=0.95)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=4, factor=0.95)
     else:
         return None
 
@@ -337,7 +322,7 @@ def main():
                         help='step size for StepLR scheduler (fault: 30)')
     parser.add_argument('--scheduler-gamma', type=float, default=0.5, metavar='G',
                         help='gamma for StepLR/ExponentialLR scheduler (default: 0.02)')
-    parser.add_argument('--min-lr', type=float, default=1e-4, metavar='LR',
+    parser.add_argument('--min-lr', type=float, default=0.0001, metavar='LR',
                         help='minimum learning rate for cosine annealing scheduler (default: 1e-4)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables GPU training (CUDA and MPS)')
