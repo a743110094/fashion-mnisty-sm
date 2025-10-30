@@ -9,3 +9,8 @@ python mnist-gpu.py --batch-size=1000 --scheduler=cosine --lr=0.06 --min-lr=0.00
 
 40: 200次 没有早停 损失0.2555 acc0.9060 保留文件2
 python mnist-gpu.py --batch-size=1000 --scheduler=cosine --lr=0.06 --min-lr=0.0001 --epochs=200
+
+
+50: 
+python mnist-gpu.py --batch-size=500 --scheduler=cosine --lr=0.05 --min-lr=0.0005 --epochs=200
+

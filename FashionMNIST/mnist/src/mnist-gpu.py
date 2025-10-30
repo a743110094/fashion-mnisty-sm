@@ -440,10 +440,10 @@ def main():
     # MPS: 不使用pin_memory（Mac GPU不支持），使用多进程加速
     # CPU: 基础多进程配置
     if use_cuda:
-        kwargs = {'num_workers': 64, 'pin_memory': True, 'persistent_workers': True}
+        kwargs = {'num_workers': 8, 'pin_memory': True, 'persistent_workers': True}
     elif use_mps:
         # Mac GPU 不支持 pin_memory，但可以用多进程加速数据加载
-        kwargs = {'num_workers': 6, 'pin_memory': False, 'persistent_workers': True}
+        kwargs = {'num_workers': 8, 'pin_memory': False, 'persistent_workers': True}
     else:
         # CPU 模式
         kwargs = {'num_workers': 2}
